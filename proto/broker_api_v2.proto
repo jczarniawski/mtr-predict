@@ -1,0 +1,624 @@
+// Scope note: this file describes the payloads of the gRPC *streaming*
+// services only (equity, positions, orders, quotations, groups, symbols,
+// account info, ledgers, trading events). It is not a schema for the REST
+// API's JSON responses. Messages here can look similar to a REST response for
+// a conceptually related resource without being the same shape — e.g.
+// `PBPosition` / `PBPositionWithGroup` (gRPC open-positions stream) do not
+// necessarily match the field names/shape of the REST closed-positions
+// response (`POST /v1/trading-accounts/trading-data/closed-positions`).
+// Cross-check against `scripts/endpoints.json` / `references/*.md` before
+// assuming a REST payload mirrors a message defined here.
+
+syntax = 'proto3';
+option java_multiple_files = true;
+option java_package = 'com.matchtrade.mtr.broker_api.grpc';
+
+package com.matchtrade.mtr.broker_api.grpc;
+
+// Equity
+service EquityServiceExternal {
+  rpc getEquityStream (PBEquityRequestExternal) returns (stream PBEquityStreamResponseExternal) {}
+}
+
+message PBEquityRequestExternal {
+  repeated string groups = 1;
+  repeated string logins = 2;
+  repeated PBClientAccessRightsTypeExternal accessRightsFilter = 3;
+  bool includeStateHistory = 4;
+}
+
+message PBEquityStreamResponseExternal {
+  oneof msg {
+    PBEquityResponseExternal equity = 1;
+    bool heartbeat = 2;
+  }
+}
+
+message PBEquityResponseExternal {
+  string login = 1;
+  string equity = 2;
+  string balance = 3;
+  string credit = 4;
+}
+
+// Group
+service GroupServiceExternal {
+  rpc getGroupChangesStream(PBGroupChangeStreamRequestExternal) returns (stream PBGroupChangeStreamResponseExternal) {
+  }
+}
+
+message PBGroupChangeStreamRequestExternal {
+  repeated string groups = 1;
+}
+
+message PBGroupChangeStreamResponseExternal {
+  oneof msg {
+    PBGroupUpdatedExternal groupUpdated = 1;
+    PBGroupDeletedExternal groupDeleted = 2;
+    bool heartbeat = 3;
+  }
+}
+
+message PBGroupUpdatedExternal {
+  string group = 1;
+  string currency = 2;
+  int32 currencyPrecision = 3;
+  string groupOwner = 4;
+  map&lt;string, PBGroupSymbolExternal&gt; symbols = 5;
+  PBMarginCalculationTypeExternal marginCalculationType = 6;
+  bool isManager = 7;
+  bool isAdmin = 8;
+  bool isBrokerManager = 9;
+  int64 marginCall = 10;
+  int64 swapCalculationTime = 11;
+  PBStopoutAndMarginCallTypeExternal stopoutAndMarginCallType = 12;
+  bool commissionUpfront = 13;
+  bool islamicSwap = 14;
+  bool demoGroup = 15;
+  PBHedgeMarginCalculationTypeExternal hedgeMarginCalculationType = 16;
+  int64 eodMode = 17;
+  int64 eomMode = 18;
+  int64 eodSnapshotTime = 19;
+  bool defaultRetailEnabled = 20;
+  bool coverageMode = 21;
+  int64 orderProcessingDelay = 22;
+  double stopoutLevel = 23;
+  bool hedgingEnabled = 24;
+  int64 pendingMultiplierPer1000 = 25;
+  int64 defaultLeverageRatioPercent = 26;
+  int64 commissionPerMillion = 27;
+  int64 agentCommissionPerMillion = 28;
+}
+
+message PBGroupDeletedExternal {
+  string group = 1;
+  PBGroupDeletedReasonExternal reason = 2;
+
+  enum PBGroupDeletedReasonExternal {
+    GROUP_DELETED_REASON_UNSPECIFIED = 0;
+    GROUP_DELETED_REASON_DELETED = 1;
+  }
+}
+
+message PBGroupSymbolExternal {
+  string symbol = 1;
+  string bidMarkup = 2;
+  string askMarkup = 3;
+  double leverage = 4;
+  string swapBuy = 5;
+  string swapSell = 6;
+  string freezeLevel = 7;
+  string stopsLevel = 8;
+  PBSwapTypeExternal swapType = 9;
+  string volumeMin = 10;
+  string volumeMax = 11;
+  string minCommission = 12;
+  bool fixedLeverage = 13;
+  string rawLeverage = 14;
+  PBCommissionTypeExternal commissionType = 15;
+  string commissionPerMillion = 16;
+}
+enum PBMarginCalculationTypeExternal {
+  MARGIN_CALCULATION_TYPE_UNSPECIFIED = 0;
+  MARGIN_CALCULATION_TYPE_UNREALIZED_LOSS_ONLY = 1;
+  MARGIN_CALCULATION_TYPE_UNREALIZED_PROFIT_LOSS = 2;
+}
+
+enum PBStopoutAndMarginCallTypeExternal {
+  STOPOUT_AND_MARGIN_CALL_TYPE_UNSPECIFIED = 0;
+  STOPOUT_AND_MARGIN_CALL_TYPE_MARGIN_LEVEL_PERCENTAGE = 1;
+  STOPOUT_AND_MARGIN_CALL_TYPE_ABSOLUTE_EQUITY_USD = 2;
+  STOPOUT_AND_MARGIN_CALL_TYPE_OFF = 3;
+}
+
+enum PBHedgeMarginCalculationTypeExternal {
+  HEDGE_MARGIN_CALCULATION_TYPE_UNSPECIFIED = 0;
+  HEDGE_MARGIN_CALCULATION_TYPE_NETTING = 1;
+  HEDGE_MARGIN_CALCULATION_TYPE_LARGER_LEG = 2;
+}
+
+enum PBSwapTypeExternal {
+  SWAP_TYPE_UNSPECIFIED = 0;
+  SWAP_TYPE_POINTS = 1;
+  SWAP_TYPE_PERCENTS = 2;
+  SWAP_TYPE_NOT_DEFINED = 3;
+}
+
+enum PBCommissionTypeExternal {
+  COMMISSION_TYPE_UNSPECIFIED = 0;
+  COMMISSION_TYPE_USD_PER_MILLION = 1;
+  COMMISSION_TYPE_USD_PER_CONTRACT = 2;
+  COMMISSION_TYPE_USD_PER_LOT = 3;
+  COMMISSION_TYPE_PERMILLS = 4;
+  COMMISSION_TYPE_POINTS = 5;
+}
+
+// Ledger
+service LedgerServiceExternal {
+  rpc getLedgersStream(PBLedgersRequestExternal) returns (stream PBLedgersStreamResponseExternal) {}
+}
+
+message PBLedgersRequestExternal {
+  repeated string logins = 2;
+  repeated string groups = 3;
+  repeated PBHistoryOperationTypeExternal historyOperationType = 4;
+  repeated PBAdditionalTypeExternal additionalTypes = 5;
+}
+
+enum PBHistoryOperationTypeExternal {
+  HISTORY_OPERATION_TYPE_UNSPECIFIED = 0;
+  HISTORY_OPERATION_TYPE_DEPOSIT = 1;
+  HISTORY_OPERATION_TYPE_WITHDRAWAL = 2;
+  HISTORY_OPERATION_TYPE_CREDIT_IN = 3;
+  HISTORY_OPERATION_TYPE_CREDIT_OUT = 4;
+  HISTORY_OPERATION_TYPE_AGENT_COMMISSION = 5;
+  HISTORY_OPERATION_TYPE_COMMISSIONS = 6;
+  HISTORY_OPERATION_TYPE_SWAPS = 7;
+  HISTORY_OPERATION_TYPE_OTHER = 8;
+  HISTORY_OPERATION_TYPE_CLOSED_POSITION = 9;
+}
+
+enum PBAdditionalTypeExternal {
+  ADDITIONAL_TYPE_LEDGER_NONE = 0;
+  ADDITIONAL_TYPE_NEGATIVE_BALANCE_WITHDRAW = 1;
+  ADDITIONAL_TYPE_CORRECTION = 2;
+  ADDITIONAL_TYPE_REVENUE_SHARE = 3;
+  ADDITIONAL_TYPE_INVOICE_PAYMENT = 4;
+  ADDITIONAL_TYPE_MINIMUM_MONTHLY = 5;
+  ADDITIONAL_TYPE_AGENT_COMMISSION_LEDGER = 6;
+  ADDITIONAL_TYPE_NEGATIVE_BALANCE_CORRECTION = 7;
+  ADDITIONAL_TYPE_SETTLEMENT = 8;
+  ADDITIONAL_TYPE_INACTIVITY_FEE = 9;
+  ADDITIONAL_TYPE_BONUS_IN_OUT = 10;
+  ADDITIONAL_TYPE_STORAGE_FEE = 11;
+  ADDITIONAL_TYPE_M2P = 12;
+  ADDITIONAL_TYPE_BANK = 13;
+  ADDITIONAL_TYPE_CRYPTO = 14;
+  ADDITIONAL_TYPE_DEPOSIT_CORRECTION = 15;
+  ADDITIONAL_TYPE_WITHDRAW_CORRECTION = 16;
+  ADDITIONAL_TYPE_SWAP_CORRECTION = 17;
+  ADDITIONAL_TYPE_COMMISSION_CORRECTION = 18;
+  ADDITIONAL_TYPE_AGENT_FEE_CORRECTION = 19;
+  ADDITIONAL_TYPE_MINIMUM_MONTHLY_FEE_CORRECTION = 20;
+  ADDITIONAL_TYPE_REVENUE_SHARE_CORRECTION = 21;
+  ADDITIONAL_TYPE_CPA = 22;
+  ADDITIONAL_TYPE_DEPOSIT_BONUS = 23;
+  ADDITIONAL_TYPE_CASHBACK = 24;
+  ADDITIONAL_TYPE_IB_COMMISSION = 25;
+  ADDITIONAL_TYPE_INTERNAL_TRANSFER = 26;
+  ADDITIONAL_TYPE_NORIA_PAYMENT = 27;
+  ADDITIONAL_TYPE_UNKNOWN_LEDGER = 28;
+  ADDITIONAL_TYPE_FUNDING_ALLOCATION = 29;
+  ADDITIONAL_TYPE_ACCOUNT_FEE = 30;
+  ADDITIONAL_TYPE_PERFORMANCE_FEE = 31;
+  ADDITIONAL_TYPE_MONTHLY_FEE = 32;
+  ADDITIONAL_TYPE_MARGIN_LIMIT = 33;
+}
+
+message PBLedgersStreamResponseExternal {
+  oneof response {
+    PBLedgers ledgers = 1;
+    bool heartbeat = 2;
+  }
+}
+
+message PBLedgers {
+  repeated PBLedger ledgers = 1;
+}
+
+message PBLedger {
+  string id = 1;
+  PBHistoryOperationTypeExternal historyOperationType = 2;
+  string time = 3;
+  double profit = 4;
+  string comment = 5;
+  string group = 6;
+  string login = 7;
+  PBAdditionalTypeExternal additionalType = 8;
+}
+
+// Order
+service OrderServiceExternal {
+  rpc getOrdersUpdateStream(PBOrdersUpdateStreamRequestExternal) returns (stream PBOrdersUpdateStreamResponseExternal) {
+  }
+}
+
+message PBOrdersUpdateStreamResponseExternal {
+  oneof msg {
+    PBOrderExternal order = 1;
+    bool heartbeat = 2;
+  }
+}
+
+message PBOrderExternal {
+  string orderId = 1;
+  string symbol = 2;
+  string alias = 3;
+  double volume = 4;
+  PBPendingTypeExternal type = 5;
+  string creationTime = 6;
+  double activationPrice = 7;
+  PBOrderSideExternal side = 8;
+  double stopLoss = 9;
+  double takeProfit = 10;
+  string comment = 11;
+  PBRequestUpdateTypeExternal requestUpdateType = 12;
+  string groupName = 13;
+  string login = 14;
+}
+
+message PBOrdersUpdateStreamRequestExternal {
+  repeated string logins = 1;
+  repeated string groups = 2;
+  repeated PBClientAccessRightsTypeExternal accessRightsFilter = 3;
+}
+
+enum PBPendingTypeExternal {
+  PENDING_TYPE_UNSPECIFIED = 0;
+  PENDING_TYPE_LIMIT = 1;
+  PENDING_TYPE_STOP = 2;
+}
+
+
+enum PBRequestUpdateTypeExternal {
+  REQUEST_UPDATE_TYPE_UNSPECIFIED = 0;
+  REQUEST_UPDATE_TYPE_NEW = 1;
+  REQUEST_UPDATE_TYPE_UPDATE = 2;
+  REQUEST_UPDATE_TYPE_CLOSED = 3;
+  REQUEST_UPDATE_TYPE_PROFIT_CHANGE = 4;
+  REQUEST_UPDATE_TYPE_PARTIALLY_CLOSED = 5;
+}
+
+// Position
+service PositionsServiceExternal {
+  rpc getOpenPositionsStream (PBOpenPositionRequestExternal) returns (stream PBOpenPositionsStreamResponseExternal) {}
+}
+
+message PBPosition {
+  string id = 1;
+  string symbol = 2;
+  string alias = 15;
+  double volume = 3;
+  PBOrderSideExternal side = 4;
+  string openTime = 5;
+  double openPrice = 6;
+  double stopLoss = 7;
+  double takeProfit = 8;
+  double swap = 9;
+  double profit = 10;
+  double netProfit = 11;
+  double currentPrice = 12;
+  double commission = 13;
+  repeated PBPartial partials = 14;
+  double margin = 16;
+}
+
+message PBPartial {
+  string id = 1;
+  double volume = 3;
+  double oldPartialVolume = 4;
+  string openTime = 6;
+  double openPrice = 7;
+  double swap = 8;
+  double profit = 9;
+  double netProfit = 10;
+  double commission = 12;
+  double margin = 13;
+}
+
+message PBOpenPositionRequestExternal {
+  repeated string groups = 1;
+  repeated string logins = 2;
+}
+
+message PBOpenPositionsStreamResponseExternal {
+  oneof msg {
+    PositionsPerClient positions = 1;
+    bool heartbeat = 2;
+  }
+}
+
+message PositionsPerClient {
+  repeated PBPositionWithGroup positions = 1;
+}
+
+message PBPositionWithGroup {
+  string login = 1;
+  string group = 2;
+  string id = 3;
+  string symbol = 4;
+  double volume = 5;
+  PBOrderSideExternal side = 6;
+  string openTime = 7;
+  double openPrice = 8;
+  double stopLoss = 9;
+  double takeProfit = 10;
+  double swap = 11;
+  double profit = 12;
+  double netProfit = 13;
+  double currentPrice = 14;
+  double commission = 15;
+  repeated PBPartialExternal partials = 16;
+  string alias = 17;
+  PBRequestUpdateTypeExternal requestUpdateType = 18;
+}
+
+message PBPartialExternal {
+  string id = 1;
+  double volume = 2;
+  string openTime = 3;
+  double openPrice = 4;
+  double swap = 5;
+  double profit = 6;
+  double netProfit = 7;
+  double commission = 8;
+}
+
+// Quotation
+service QuotationsServiceExternal {
+  rpc getQuotationsWithMarkupStream (PBQuotationsWithMarkupStreamRequestExternal) returns (stream PBQuotationSimpleExternal) {}
+}
+
+message PBQuotationsWithMarkupStreamRequestExternal {
+  repeated string symbols = 1;
+  optional string group = 2;
+  optional int64 throttlingMs = 3;
+  optional bool smartThrottling = 4;
+}
+
+message PBQuotationSimpleExternal {
+  oneof msg {
+    PBQuotation quotation = 1;
+    bool heartbeat = 2;
+  }
+}
+
+message PBQuotation {
+  string symbol = 1;
+  double bidPrice = 2;
+  double askPrice = 3;
+  int64 timestampInMillis = 4;
+  optional PBDailyStatisticsExternal dailyStatistics = 5;
+}
+
+message PBDailyStatisticsExternal {
+  double change = 1;
+  double high = 2;
+  double low = 3;
+}
+
+// Symbol
+service SymbolsServiceExternal {
+  rpc getSymbolsChangedStream(PBSymbolChangedRequestExternal) returns (stream PBSymbolChangedStreamResponseExternal) {}
+}
+
+enum PBInstrumentTypeExternal {
+  INSTRUMENT_TYPE_UNSPECIFIED = 0;
+  INSTRUMENT_TYPE_FOREX = 1;
+  INSTRUMENT_TYPE_CFD = 2;
+  INSTRUMENT_TYPE_FOREXCFD = 3;
+  INSTRUMENT_TYPE_PRED = 4;
+}
+
+message PBSymbolChangedRequestExternal {}
+
+message PBSymbolChangedStreamResponseExternal {
+  oneof msg {
+    PBSymbolUpdatedOrCreatedExternal symbolUpdated = 1;
+    PBSymbolDeletedExternal symbolDeleted = 2;
+    PBSymbolUpdatedOrCreatedExternal symbolCreated = 3;
+    bool heartbeat = 4;
+  }
+}
+
+message PBSymbolUpdatedOrCreatedExternal {
+  string symbol = 1;
+  string alias = 2;
+  string baseCurrency = 3;
+  string quoteCurrency = 4;
+  PBInstrumentTypeExternal type = 5;
+  string description = 6;
+  int32 pricePrecision = 7;
+  int32 volumePrecision = 8;
+  string volumeMin = 9;
+  string volumeMax = 10;
+  string volumeStep = 11;
+  string contractSize = 12;
+  string multiplier = 13;
+  string divider = 14;
+  string sizeOfOnePoint = 15;
+  double commission = 16;
+  string swapBuy = 17;
+  string swapSell = 18;
+  double leverage = 19;
+  PBTerminationTypeExternal terminationType = 20;
+  string terminationDate = 21;
+  repeated string tags = 22;
+  repeated PBTradeHoursExternal tradingHours = 23;
+}
+
+message PBSymbolDeletedExternal {
+  string symbol = 1;
+}
+
+message PBTradeHoursExternal {
+  int32 dayNumber = 1;
+  int32 openHours = 2;
+  int32 openMinutes = 3;
+  int32 openSeconds = 4;
+  int32 closeHours = 5;
+  int32 closeMinutes = 6;
+  int32 closeSeconds = 7;
+}
+
+enum PBTerminationTypeExternal {
+  TERMINATION_TYPE_UNSPECIFIED = 0;
+  TERMINATION_TYPE_EXPIRATION = 1;
+  TERMINATION_TYPE_ROLLOVER = 2;
+}
+
+// Trading account Info
+service AccountInfoServiceExternal {
+  rpc getTradingAccountInfoChangedStream (PBTradingAccountInfoChangedRequestExternal) returns (stream PBTradingAccountInfoChangedStreamResponseExternal) {}
+}
+
+message PBTradingAccountInfoChangedRequestExternal {
+  repeated string groups = 1;
+  repeated PBClientAccessRightsTypeExternal accessRightsFilter = 2;
+}
+
+message PBTradingAccountInfoChangedStreamResponseExternal {
+  oneof msg {
+    PBTradingAccountUpdated tradingAccountUpdated = 1;
+    PBTradingAccountDeleted tradingAccountDeleted = 2;
+    bool heartbeat = 3;
+  }
+}
+
+message PBTradingAccountUpdated {
+  string login = 1;
+  PBAccountInfoUpdatedDetails current = 2;
+  PBAccountInfoUpdatedDetails prev = 3;
+}
+
+message PBTradingAccountDeleted {
+  string login = 1;
+  string group = 2;
+  PBTradingAccountDeletedReasonExternal reason = 3;
+  enum PBTradingAccountDeletedReasonExternal {
+    TRADING_ACCOUNT_DELETED_REASON_UNSPECIFIED = 0;
+    TRADING_ACCOUNT_DELETED_REASON_ACCOUNT_DELETED = 1;
+    TRADING_ACCOUNT_DELETED_REASON_RIGHTS_REVOKED = 2;
+    TRADING_ACCOUNT_DELETED_REASON_ACCOUNT_INTERNAL_ERROR = 3;
+  }
+}
+
+message PBAccountInfoUpdatedDetails {
+  optional string group = 2;
+  optional int32 leverageRatioPercent = 3;
+  optional bool isRetail = 4;
+  optional bool isProView = 5;
+  optional string country = 8;
+  optional string name = 9;
+  optional string surname = 10;
+  optional string address = 11;
+  optional string email = 12;
+  optional string phone = 13;
+  optional string province = 14;
+  optional string zipCode = 15;
+  optional string city = 16;
+  optional string remarks = 17;
+  optional string bankAccount = 18;
+  optional string accountCurrency = 19;
+  optional int32 accountCurrencyPrecision = 20;
+  optional int64 registrationDate = 21;
+  optional PBClientAccessRightsTypeExternal accessRightsType = 22;
+  int32 version = 23;
+}
+
+// Trading Event
+service TradingEventsServiceExternal {
+  rpc getTradingEventsStream (PBTradingEventsStreamRequestExternal) returns (stream PBTradingEventsStreamResponseExternal) {
+  }
+}
+
+message PBTradingEventsStreamRequestExternal {
+  repeated string logins = 1;
+  repeated string groups = 2;
+  repeated PBClientAccessRightsTypeExternal accessRightsFilter = 3;
+}
+
+message PBTradingEventsStreamResponseExternal {
+  oneof msg {
+    PBTradingExternalEvents tradingEvents = 1;
+    bool heartbeat = 2;
+  }
+}
+
+message PBTradingExternalEvents {
+  repeated PBTradingExternalEvent tradingEvents = 1;
+}
+
+message PBTradingExternalEvent {
+  oneof msg {
+    PBMarginCallExternalEvent marginCallEvent = 1;
+    PBStopOutExternalEvent stopOutEvent = 2;
+    PBTakeProfitExternalEvent takeProfitEvent = 3;
+    PBStopLossExternalEvent stopLossEvent = 4;
+    PBOrderActivationExternalEvent orderActivationEvent = 5;
+  }
+  string login = 6;
+  string group = 7;
+}
+
+message PBOrderActivationExternalEvent {
+  string orderId = 1;
+  string instrument = 2;
+  PBOrderSideExternal side = 3;
+  double volume = 4;
+  double activationPrice = 5;
+}
+
+message PBMarginCallExternalEvent {
+  double marginLevel = 1;
+}
+
+message PBStopOutExternalEvent {
+  string orderId = 1;
+  string instrument = 2;
+  double volume = 3;
+}
+
+message PBTakeProfitExternalEvent {
+  string orderId = 1;
+  string instrument = 2;
+  PBOrderSideExternal side = 3;
+  double volume = 4;
+  double netProfit = 5;
+  string walletCurrency = 6;
+}
+
+message PBStopLossExternalEvent {
+  string orderId = 1;
+  string instrument = 2;
+  PBOrderSideExternal side = 3;
+  double volume = 4;
+  double netProfit = 5;
+  string walletCurrency = 6;
+}
+
+// Common
+enum PBOrderSideExternal {
+  ORDER_SIDE_UNSPECIFIED = 0;
+  ORDER_SIDE_BUY = 1;
+  ORDER_SIDE_SELL = 2;
+}
+
+enum PBClientAccessRightsTypeExternal {
+  CLIENT_ACCESS_RIGHTS_TYPE_UNSPECIFIED = 0;
+  CLIENT_ACCESS_RIGHTS_TYPE_FULL = 1;
+  CLIENT_ACCESS_RIGHTS_TYPE_CLOSE_ONLY = 2;
+  CLIENT_ACCESS_RIGHTS_TYPE_TRADING_DISABLED = 3;
+  CLIENT_ACCESS_RIGHTS_TYPE_TRADING_AND_LOGIN_DISABLED = 4;
+  CLIENT_ACCESS_RIGHTS_TYPE_LOCKED_CLOSE_ONLY = 5;
+}

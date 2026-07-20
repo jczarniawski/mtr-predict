@@ -1,0 +1,20 @@
+# dependencies
+/node_modules
+
+# next.js
+/.next/
+/out/
+next-env.d.ts
+
+# testing
+/coverage
+
+# env — never commit real broker tokens
+.env
+.env.*
+!.env.example
+
+# misc
+.DS_Store
+*.tsbuildinfo
+/screenshots

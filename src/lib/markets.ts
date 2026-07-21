@@ -15,6 +15,25 @@ const DETAIL_TTL_MS = 60_000;
 const SYMBOLS_TTL_MS = 10 * 60_000;
 const MAX_BETS = 300;
 const OUTCOME_FETCH_CONCURRENCY = 6;
+// Bound the per-request work in resolveSymbols so a single unresolvable symbol
+// can't trigger a full sweep of the bet universe (and blow the rate budget).
+const RESOLVE_SWEEP_LIMIT = 80;
+const UNRESOLVED_TTL_MS = 5 * 60_000;
+// Cap the long-lived caches so a busy, long-running process stays bounded.
+const MAX_DETAIL = 600;
+const MAX_OUTCOMES = 600;
+const MAX_SYMBOL_INDEX = 8_000;
+const MAX_SYMBOL_INFO = 4_000;
+const MAX_UNRESOLVED = 4_000;
+
+function capMap(m: Map<unknown, unknown>, max: number): void {
+  if (m.size <= max) return;
+  let excess = m.size - max;
+  for (const key of m.keys()) {
+    m.delete(key);
+    if (--excess <= 0) break;
+  }
+}
 
 export interface PriceView {
   bid: number;
@@ -65,9 +84,14 @@ export class MarketService {
   private betsCache: Cached<Bet[]> | null = null;
   private betsPromise: Promise<Bet[]> | null = null;
   private detailCache = new Map<string, Cached<BetDetail>>();
+  private detailInflight = new Map<string, Promise<BetDetail>>();
   private outcomesCache = new Map<string, Cached<Outcome[]>>();
+  private outcomesInflight = new Map<string, Promise<Outcome[]>>();
   private symbolIndex = new Map<string, SymbolMarketRef>();
+  // keyed by `${group}|${symbol}` — the same symbol resolves differently per group
   private symbolInfoCache = new Map<string, Cached<SymbolInfo>>();
+  // symbol → epoch ms it was last found unresolvable (avoids re-sweeping)
+  private unresolved = new Map<string, number>();
 
   constructor(
     private readonly broker: BrokerClient,
@@ -170,19 +194,37 @@ export class MarketService {
     const now = Date.now();
     const cached = this.detailCache.get(uuid);
     if (cached && now - cached.ts < DETAIL_TTL_MS) return cached.value;
-    const detail = await this.broker.getBet(uuid);
-    this.detailCache.set(uuid, { ts: now, value: detail });
-    return detail;
+    const inflight = this.detailInflight.get(uuid);
+    if (inflight) return inflight; // dedup concurrent cold-cache callers
+    const p = this.broker
+      .getBet(uuid)
+      .then((detail) => {
+        this.detailCache.set(uuid, { ts: Date.now(), value: detail });
+        capMap(this.detailCache, MAX_DETAIL);
+        return detail;
+      })
+      .finally(() => this.detailInflight.delete(uuid));
+    this.detailInflight.set(uuid, p);
+    return p;
   }
 
   async getOutcomes(betUuid: string): Promise<Outcome[]> {
     const now = Date.now();
     const cached = this.outcomesCache.get(betUuid);
     if (cached && now - cached.ts < OUTCOMES_TTL_MS) return cached.value;
-    const outcomes = await this.broker.getBetOutcomes(betUuid);
-    this.outcomesCache.set(betUuid, { ts: now, value: outcomes });
-    void this.indexOutcomes(betUuid, outcomes);
-    return outcomes;
+    const inflight = this.outcomesInflight.get(betUuid);
+    if (inflight) return inflight; // dedup the thundering herd on a cold cache
+    const p = this.broker
+      .getBetOutcomes(betUuid)
+      .then((outcomes) => {
+        this.outcomesCache.set(betUuid, { ts: Date.now(), value: outcomes });
+        capMap(this.outcomesCache, MAX_OUTCOMES);
+        void this.indexOutcomes(betUuid, outcomes);
+        return outcomes;
+      })
+      .finally(() => this.outcomesInflight.delete(betUuid));
+    this.outcomesInflight.set(betUuid, p);
+    return p;
   }
 
   private async indexOutcomes(betUuid: string, outcomes: Outcome[]): Promise<void> {
@@ -199,7 +241,10 @@ export class MarketService {
       };
       this.symbolIndex.set(o.instrumentYesName, { ...base, side: "YES" });
       this.symbolIndex.set(o.instrumentNoName, { ...base, side: "NO" });
+      this.unresolved.delete(o.instrumentYesName);
+      this.unresolved.delete(o.instrumentNoName);
     }
+    capMap(this.symbolIndex, MAX_SYMBOL_INDEX);
   }
 
   /**
@@ -207,15 +252,32 @@ export class MarketService {
    * Fetches outcome lists for not-yet-indexed bets until all symbols resolve.
    */
   async resolveSymbols(symbols: string[]): Promise<Map<string, SymbolMarketRef>> {
-    const remaining = new Set(symbols.filter((s) => !this.symbolIndex.has(s)));
+    const now = Date.now();
+    // Skip symbols already indexed, and those we recently failed to resolve —
+    // otherwise one delisted/aged-out symbol re-sweeps the bet universe on
+    // every portfolio load.
+    const remaining = new Set(
+      symbols.filter(
+        (s) =>
+          !this.symbolIndex.has(s) &&
+          now - (this.unresolved.get(s) ?? 0) >= UNRESOLVED_TTL_MS,
+      ),
+    );
     if (remaining.size > 0) {
       const bets = await this.listBets().catch(() => [] as Bet[]);
-      const unindexed = bets.filter((b) => !this.outcomesCache.has(b.uuid));
+      // Bound the scan: at most RESOLVE_SWEEP_LIMIT outcome fetches per call.
+      const unindexed = bets
+        .filter((b) => !this.outcomesCache.has(b.uuid))
+        .slice(0, RESOLVE_SWEEP_LIMIT);
       for (let i = 0; i < unindexed.length && remaining.size > 0; i += OUTCOME_FETCH_CONCURRENCY) {
         const batch = unindexed.slice(i, i + OUTCOME_FETCH_CONCURRENCY);
         await Promise.all(batch.map((b) => this.getOutcomes(b.uuid).catch(() => [])));
         for (const s of [...remaining]) if (this.symbolIndex.has(s)) remaining.delete(s);
       }
+      // Whatever is still unresolved after a bounded sweep: remember it so we
+      // don't re-sweep for the next UNRESOLVED_TTL_MS.
+      for (const s of remaining) this.unresolved.set(s, now);
+      capMap(this.unresolved, MAX_UNRESOLVED);
     }
     const out = new Map<string, SymbolMarketRef>();
     for (const s of symbols) {
@@ -230,8 +292,11 @@ export class MarketService {
     const now = Date.now();
     const out = new Map<string, SymbolInfo>();
     const missing: string[] = [];
+    // Instrument config differs by group — key the cache by group+symbol so one
+    // group's SymbolInfo can't poison lookups (wrong contractSize/volume) for
+    // another group.
     for (const s of new Set(symbols)) {
-      const cached = this.symbolInfoCache.get(s);
+      const cached = this.symbolInfoCache.get(`${group}|${s}`);
       if (cached && now - cached.ts < SYMBOLS_TTL_MS) out.set(s, cached.value);
       else missing.push(s);
     }
@@ -239,9 +304,10 @@ export class MarketService {
       try {
         const infos = await this.broker.getSymbols(group, missing);
         for (const info of infos) {
-          this.symbolInfoCache.set(info.symbol, { ts: now, value: info });
+          this.symbolInfoCache.set(`${group}|${info.symbol}`, { ts: now, value: info });
           out.set(info.symbol, info);
         }
+        capMap(this.symbolInfoCache, MAX_SYMBOL_INFO);
       } catch (e) {
         console.warn(`[markets] getSymbols failed: ${(e as Error).message}`);
       }
@@ -260,7 +326,9 @@ function toOutcomeView(o: Outcome, quotes: Record<string, Quote>): OutcomeView {
   if (yesMid == null && o.result != null) yesMid = o.result ? 1 : 0;
   return {
     ...o,
-    yes,
+    // Derive whichever side is missing from the other (YES = 1 − NO), so a
+    // one-sided quote still prices both buttons.
+    yes: yes ?? (no ? synthesizeOpposite(no) : null),
     no: no ?? (yes ? synthesizeOpposite(yes) : null),
     yesMid,
     dailyChange: yesQ?.dailyChange ?? null,

@@ -29,9 +29,17 @@ function SearchBox() {
   const [value, setValue] = useState(searchParams.get("q") ?? "");
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Keep the box in sync with the URL, and cancel any pending debounced submit
+  // on navigation — otherwise leaving `/` mid-type fires a stray push back to
+  // home, and a stale query lingers in the box after the URL changes.
   useEffect(() => {
-    if (pathname !== "/") setValue("");
-  }, [pathname]);
+    if (debounce.current) clearTimeout(debounce.current);
+    setValue(pathname === "/" ? (searchParams.get("q") ?? "") : "");
+  }, [pathname, searchParams]);
+
+  useEffect(() => () => {
+    if (debounce.current) clearTimeout(debounce.current);
+  }, []);
 
   const submit = (q: string) => {
     const params = new URLSearchParams(pathname === "/" ? searchParams : undefined);
@@ -63,7 +71,10 @@ function SearchBox() {
           debounce.current = setTimeout(() => submit(q), 350);
         }}
         onKeyDown={(e) => {
-          if (e.key === "Enter") submit(value);
+          if (e.key === "Enter") {
+            if (debounce.current) clearTimeout(debounce.current);
+            submit(value);
+          }
         }}
         placeholder="Search markets"
         className="w-full rounded-full border border-line bg-canvas py-2 pl-9 pr-4 text-sm outline-none transition focus:border-brand focus:bg-white"

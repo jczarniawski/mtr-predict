@@ -31,6 +31,17 @@ export async function POST(req: NextRequest) {
       throw new HttpError(403, "Top-ups are only available for DEMO accounts.");
     }
 
+    // Per-request cap alone lets a user loop the endpoint to an unbounded
+    // balance; also cap the resulting balance so top-ups stay demo-sized.
+    const maxBalance = env.demoInitialDeposit * 10;
+    const balance = account.financeInfo?.balance ?? 0;
+    if (balance + amount > maxBalance) {
+      throw new HttpError(
+        400,
+        `Demo balance is capped at ${maxBalance}. Current balance is ${Math.round(balance)}.`,
+      );
+    }
+
     await broker.deposit(session.login, amount);
 
     const updated = await broker.getTradingAccount(session.login);

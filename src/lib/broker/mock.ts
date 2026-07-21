@@ -562,25 +562,30 @@ function candlesFor(
   }
 
   const candles: Candle[] = [];
-  let prevClose: number | null = null;
+  // Carried in YES space (like `samples`/`preMids`); mapped to the requested
+  // instrument's space only when emitting. Carrying it in instrument space was
+  // the NO-side bug: an empty bucket's fallback got re-mapped a second time.
+  let prevYesClose: number | null = null;
+  const anchorYes = state.samples[0]?.mid ?? state.initialMid;
   for (let b = firstBucket; b <= lastBucket; b++) {
-    let mids: number[] = [];
+    let yesMids: number[] = [];
     if (b <= bootBucket) {
       const m = preMids.get(b);
-      if (m !== undefined) mids = [m];
+      if (m !== undefined) yesMids = [m];
     } else {
       const from = b * step;
       const to = from + step;
-      mids = state.samples.filter((s) => s.ts >= from && s.ts < to).map((s) => s.mid);
-      if (b === lastBucket) mids.push(state.mid);
+      yesMids = state.samples.filter((s) => s.ts >= from && s.ts < to).map((s) => s.mid);
+      if (b === lastBucket) yesMids.push(state.mid);
     }
-    if (!mids.length) {
-      if (prevClose == null) continue;
-      mids = [prevClose];
+    if (!yesMids.length) {
+      // Empty bucket: hold the last close (or the anchor for leading buckets
+      // when uptime < window, so they render flat instead of being dropped).
+      yesMids = [prevYesClose ?? anchorYes];
     }
-    const yesVals = mids;
-    const vals = ref.isYes ? yesVals : yesVals.map((m) => 1 - m);
-    const open = prevClose ?? vals[0];
+    const vals = ref.isYes ? yesMids : yesMids.map((m) => 1 - m);
+    const openYes = prevYesClose ?? yesMids[0];
+    const open = ref.isYes ? openYes : 1 - openYes;
     const close = vals[vals.length - 1];
     candles.push({
       time: new Date(b * step).toISOString(),
@@ -589,7 +594,7 @@ function candlesFor(
       low: round4(Math.min(open, ...vals)),
       close: round4(close),
     });
-    prevClose = close;
+    prevYesClose = yesMids[yesMids.length - 1];
   }
   return candles;
 }

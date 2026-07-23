@@ -61,35 +61,6 @@ export interface MarketDetailView extends BetDetail {
   outcomes: OutcomeView[];
 }
 
-/** Hero-carousel item: a market summary enriched with its detail subtitle. */
-export interface FeaturedMarket extends MarketSummary {
-  subtitle: string | null;
-}
-
-/** "Movers today" item — the top outcome with the largest daily change. */
-export interface MoverView {
-  uuid: string;
-  title: string;
-  category: string;
-  imageUrl: string;
-  /** Outcome name for multi-choice markets; null for binary. */
-  outcomeTitle: string | null;
-  yesMid: number | null;
-  dailyChange: number;
-}
-
-export interface HomeSection {
-  category: string;
-  markets: MarketSummary[];
-}
-
-export interface HomeView {
-  featured: FeaturedMarket[];
-  movers: MoverView[];
-  sections: HomeSection[];
-  categories: string[];
-}
-
 export interface SymbolMarketRef {
   betUuid: string;
   betTitle: string;
@@ -206,64 +177,6 @@ export class MarketService {
         outcomesTotal: views.length,
       };
     });
-  }
-
-  /**
-   * Everything the home page needs in one call: a featured carousel
-   * (multi-outcome markets closing soonest, padded with the biggest binary
-   * movers), a "movers today" strip, and per-category shelves.
-   */
-  async getHomeView(): Promise<HomeView> {
-    const [markets, categories] = await Promise.all([
-      this.listMarkets({ limit: 120 }),
-      this.listCategories(),
-    ]);
-
-    const multi = markets
-      .filter((m) => m.outcomesTotal >= 3)
-      .sort((a, b) => (a.closeDate ?? "9999") < (b.closeDate ?? "9999") ? -1 : 1);
-    const binaries = markets
-      .filter((m) => m.outcomesTotal < 3)
-      .sort(
-        (a, b) =>
-          Math.abs(b.outcomes[0]?.dailyChange ?? 0) - Math.abs(a.outcomes[0]?.dailyChange ?? 0),
-      );
-    const featuredBase = [...multi.slice(0, 4), ...binaries].slice(0, 5);
-    const details = await Promise.all(
-      featuredBase.map((m) => this.getDetail(m.uuid).catch(() => null)),
-    );
-    const featured: FeaturedMarket[] = featuredBase.map((m, i) => ({
-      ...m,
-      subtitle: details[i]?.subtitle ?? null,
-    }));
-
-    const movers: MoverView[] = markets
-      .flatMap((m) => {
-        const top = m.outcomes[0];
-        if (!top || top.dailyChange == null || Math.abs(top.dailyChange) < 0.005) return [];
-        return [
-          {
-            uuid: m.uuid,
-            title: m.title,
-            category: m.category,
-            imageUrl: m.imageUrl,
-            outcomeTitle: m.outcomesTotal > 1 ? top.title : null,
-            yesMid: top.yesMid,
-            dailyChange: top.dailyChange,
-          },
-        ];
-      })
-      .sort((a, b) => Math.abs(b.dailyChange) - Math.abs(a.dailyChange))
-      .slice(0, 8);
-
-    const sections: HomeSection[] = categories
-      .map((category) => ({
-        category,
-        markets: markets.filter((m) => m.category === category).slice(0, 8),
-      }))
-      .filter((s) => s.markets.length > 0);
-
-    return { featured, movers, sections, categories };
   }
 
   async getMarket(uuid: string): Promise<MarketDetailView> {

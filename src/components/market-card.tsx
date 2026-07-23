@@ -3,13 +3,25 @@
 import { useRouter } from "next/navigation";
 import type { MarketSummary, OutcomeView } from "@/lib/markets";
 import { formatCents, formatPercent } from "@/lib/money";
-import { CategoryTile, ChangeChip } from "@/components/ui";
+import { CategoryTile } from "@/components/ui";
 
 function closeLabel(iso: string | null): string | null {
   if (!iso) return null;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return null;
   return d.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+}
+
+function ChangeChip({ change }: { change: number | null }) {
+  if (change == null || Math.abs(change) < 0.005) return null;
+  const up = change > 0;
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-xs font-semibold ${up ? "text-yes-strong" : "text-no-strong"}`}
+    >
+      {up ? "▲" : "▼"} {Math.abs(Math.round(change * 100))}¢ today
+    </span>
+  );
 }
 
 function YesNoButtons({
@@ -45,19 +57,6 @@ function YesNoButtons({
   );
 }
 
-/** Thin probability meter for binary cards — chance of YES at a glance. */
-function ChanceBar({ yesMid }: { yesMid: number | null }) {
-  if (yesMid == null) return null;
-  return (
-    <div className="mb-2.5 h-1 overflow-hidden rounded-full bg-slate-100" aria-hidden>
-      <div
-        className="h-full rounded-full bg-yes transition-all duration-500"
-        style={{ width: `${Math.round(yesMid * 100)}%` }}
-      />
-    </div>
-  );
-}
-
 export function MarketCard({ market }: { market: MarketSummary }) {
   const router = useRouter();
   const isBinary = market.outcomesTotal <= 1;
@@ -68,8 +67,7 @@ export function MarketCard({ market }: { market: MarketSummary }) {
   return (
     <div
       onClick={() => router.push(`/market/${market.uuid}`)}
-      className="flex h-full cursor-pointer flex-col rounded-2xl border border-line bg-white p-4 shadow-card transition duration-200 hover:-translate-y-0.5 hover:border-slate-200 hover:shadow-pop"
-      data-testid="market-card"
+      className="flex cursor-pointer flex-col rounded-xl border border-line bg-white p-4 shadow-card transition hover:-translate-y-0.5 hover:shadow-pop"
     >
       <div className="flex items-start gap-3">
         <CategoryTile category={market.category} imageUrl={market.imageUrl || undefined} />
@@ -91,10 +89,7 @@ export function MarketCard({ market }: { market: MarketSummary }) {
           resolved ? (
             <ResolvedLine outcome={top} binary />
           ) : (
-            <>
-              <ChanceBar yesMid={top.yesMid} />
-              <YesNoButtons outcome={top} betUuid={market.uuid} />
-            </>
+            <YesNoButtons outcome={top} betUuid={market.uuid} />
           )
         ) : (
           <ul className="space-y-1.5">

@@ -110,15 +110,3 @@ export function round2(n: number): number {
 export function mid(bid: number, ask: number): number {
   return (bid + ask) / 2;
 }
-
-/**
- * Payout multiplier for a winning contract bought at `price` (settles at 1.0):
- * 0.5 → "2x", 0.62 → "1.6x", 0.05 → "20x". Null when price is missing or too
- * close to the bounds to be meaningful.
- */
-export function formatMultiplier(price: number | null | undefined): string | null {
-  if (price == null || !Number.isFinite(price) || price <= 0.005 || price >= 1) return null;
-  const mult = 1 / price;
-  const label = mult >= 10 ? Math.round(mult).toString() : (Math.round(mult * 10) / 10).toString();
-  return `${label}x`;
-}

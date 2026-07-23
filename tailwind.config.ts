@@ -21,13 +21,15 @@ const config: Config = {
           softer: "#fef6f8",
         },
         brand: {
-          DEFAULT: "#0a6e54",
-          dark: "#08523f",
+          DEFAULT: "#4f46e5",
+          dark: "#4338ca",
+          soft: "#eef2ff",
         },
       },
       boxShadow: {
         card: "0 1px 2px rgba(15,26,42,0.05)",
-        pop: "0 8px 30px rgba(15,26,42,0.12)",
+        pop: "0 12px 32px rgba(15,26,42,0.12)",
+        hero: "0 1px 2px rgba(15,26,42,0.04), 0 16px 48px rgba(79,70,229,0.08)",
       },
       fontFamily: {
         sans: [

@@ -11,9 +11,9 @@ function Logo() {
   return (
     <Link href="/" className="flex items-center gap-2">
       <svg viewBox="0 0 64 64" className="h-8 w-8" aria-hidden>
-        <rect width="64" height="64" rx="14" fill="#0a6e54" />
+        <rect width="64" height="64" rx="14" fill="#4f46e5" />
         <path d="M14 44 26 28l8 8 12-18 4 4-15 22-8-8-9 12z" fill="#fff" />
-        <circle cx="46" cy="18" r="4" fill="#7ce3b8" />
+        <circle cx="46" cy="18" r="4" fill="#a5b4fc" />
       </svg>
       <span className="text-lg font-extrabold tracking-tight">
         MTR&nbsp;Predict
@@ -105,13 +105,13 @@ function AccountMenu() {
       <div className="flex items-center gap-2">
         <Link
           href="/auth"
-          className="rounded-full px-4 py-2 text-sm font-semibold text-ink transition hover:bg-canvas"
+          className="whitespace-nowrap rounded-full px-4 py-2 text-sm font-semibold text-ink transition hover:bg-canvas"
         >
           Log in
         </Link>
         <Link
           href="/auth?tab=signup"
-          className="rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark"
+          className="whitespace-nowrap rounded-full bg-brand px-4 py-2 text-sm font-semibold text-white transition hover:bg-brand-dark"
         >
           Sign up
         </Link>

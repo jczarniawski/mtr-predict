@@ -132,12 +132,18 @@ export class HttpBrokerClient implements BrokerClient {
   }
 
   /**
-   * REST fallback for latest prices: last M1 candle close per symbol.
+   * REST fallback for latest prices: freshest recent M1 candle close per symbol.
    * (The real-time path is the gRPC quote stream — see quotes.ts.)
+   *
+   * The window is kept well under the 1000-candle `size` cap so the server can
+   * never truncate and drop the most-recent bar; and we pick the candle by
+   * latest timestamp rather than assuming array order, so a stale bar can't be
+   * mistaken for the current price.
    */
   async getQuotes(symbols: string[]): Promise<Quote[]> {
     const now = Date.now();
-    const from = new Date(now - 24 * 60 * 60 * 1000).toISOString();
+    const WINDOW_MINUTES = 360; // 6h of M1 candles, << 1000 cap → no truncation
+    const from = new Date(now - WINDOW_MINUTES * 60 * 1000).toISOString();
     const to = new Date(now).toISOString();
     const out: Quote[] = [];
     const CONCURRENCY = 4;
@@ -145,9 +151,20 @@ export class HttpBrokerClient implements BrokerClient {
     const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
       for (let s = queue.shift(); s !== undefined; s = queue.shift()) {
         try {
-          const res = await this.getCandles({ symbol: s, interval: "M1", from, to, size: 1000 });
-          const last = res.candles?.[res.candles.length - 1];
+          const res = await this.getCandles({
+            symbol: s,
+            interval: "M1",
+            from,
+            to,
+            size: WINDOW_MINUTES,
+          });
+          let last: { time: string; close: number } | undefined;
+          for (const c of res.candles ?? []) {
+            if (!last || Date.parse(c.time) >= Date.parse(last.time)) last = c;
+          }
           if (last) {
+            // ts is our fetch time (drives the REST cache TTL in quotes.ts); the
+            // window above guarantees `last` is a genuinely recent bar.
             out.push({ symbol: s, bid: last.close, ask: last.close, ts: now, source: "rest" });
           }
         } catch {

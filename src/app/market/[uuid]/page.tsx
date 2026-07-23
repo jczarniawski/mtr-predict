@@ -10,7 +10,9 @@ export default async function MarketPage({
   const { uuid } = await params;
   return (
     <Suspense fallback={<PageLoader label="Loading market…" />}>
-      <MarketView uuid={uuid} />
+      {/* key by uuid so a market→market navigation remounts and re-reads the
+          ?outcome=&side= deep-link instead of keeping the prior selection */}
+      <MarketView key={uuid} uuid={uuid} />
     </Suspense>
   );
 }

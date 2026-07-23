@@ -4,6 +4,7 @@ import type { BrokerClient, Quote } from "@/lib/broker/types";
 const REST_QUOTE_TTL_MS = 15_000;
 const REST_COOLDOWN_MS = 10_000;
 const REST_BURST_LIMIT = 12;
+const MAX_CACHED_QUOTES = 5_000; // bound memory over long uptime with bet churn
 
 /**
  * Server-side quote cache shared by every request.
@@ -71,6 +72,31 @@ export class QuoteService {
       const q = this.cache.get(s);
       if (q) out[s] = q;
     }
+    this.evict(now);
     return out;
+  }
+
+  /** Drop expired cooldown entries and bound the quote cache. */
+  private evict(now: number): void {
+    for (const [s, until] of this.restCooldown) {
+      if (until <= now) this.restCooldown.delete(s);
+    }
+    if (this.cache.size > MAX_CACHED_QUOTES) {
+      // Map preserves insertion order — drop the oldest-inserted entries.
+      const excess = this.cache.size - MAX_CACHED_QUOTES;
+      let i = 0;
+      for (const key of this.cache.keys()) {
+        this.cache.delete(key);
+        if (++i >= excess) break;
+      }
+    }
+  }
+
+  /** Stop the gRPC feed and release caches (called when services are rebuilt). */
+  dispose(): void {
+    this.feed?.dispose();
+    this.feed = null;
+    this.cache.clear();
+    this.restCooldown.clear();
   }
 }

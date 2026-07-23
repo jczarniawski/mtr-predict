@@ -30,10 +30,27 @@ export function getEnv(): AppEnv {
       process.env.BROKER_GRPC_HOST ?? "grpc-broker-api-v2-demo.match-trader.com:8083"
     ).trim(),
     mode,
-    sessionSecret: process.env.SESSION_SECRET || "dev-insecure-session-secret",
+    sessionSecret: resolveSessionSecret(mode),
     demoInitialDeposit: clampNumber(process.env.DEMO_INITIAL_DEPOSIT, 10_000, 1, 1_000_000),
     disableDeposits: (process.env.DISABLE_DEPOSITS ?? "").toLowerCase() === "true",
   };
+}
+
+/**
+ * Session cookies are signed with this secret. In live mode we refuse to fall
+ * back to a source-visible default: a known key lets anyone forge a session for
+ * any account (and bypass any real auth layer put in front of the login route).
+ */
+function resolveSessionSecret(mode: BrokerMode): string {
+  const secret = (process.env.SESSION_SECRET ?? "").trim();
+  if (secret.length >= 16) return secret;
+  if (mode === "live") {
+    throw new Error(
+      "SESSION_SECRET is missing or too short. Set a strong random value (at least 16 characters); " +
+        "refusing to sign sessions with an insecure built-in default in live mode.",
+    );
+  }
+  return secret || "dev-insecure-session-secret";
 }
 
 function clampNumber(

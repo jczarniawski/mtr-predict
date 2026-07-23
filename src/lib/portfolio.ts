@@ -113,7 +113,6 @@ export async function getPortfolio(login: string): Promise<PortfolioView> {
       const contractSize = infoMap.get(p.symbol)?.contractSize ?? 1;
       const currentPrice = q ? (p.side === "BUY" ? q.bid : q.ask) : (p.currentPrice ?? null);
       const cost = round2(p.volume * contractSize * p.openPrice);
-      const value = currentPrice != null ? round2(p.volume * contractSize * currentPrice) : null;
       const pnl =
         currentPrice != null
           ? round2(
@@ -122,6 +121,16 @@ export async function getPortfolio(login: string): Promise<PortfolioView> {
                 contractSize,
             )
           : (p.profit ?? null);
+      // For a BUY, value is the mark-to-market (volume × price). For a SELL
+      // (short), that formula is the buy-back cost, not an asset value — using
+      // it would overstate the portfolio value total, so mark the short to
+      // cost + P&L instead so value − cost === pnl for every leg.
+      const value =
+        currentPrice != null
+          ? p.side === "BUY"
+            ? round2(p.volume * contractSize * currentPrice)
+            : round2(cost + (pnl ?? 0))
+          : null;
       return {
         id: p.id,
         symbol: p.symbol,

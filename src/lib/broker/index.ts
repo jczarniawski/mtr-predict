@@ -24,18 +24,21 @@ declare global {
 function services(): Services {
   const env = getEnv();
   const key = [env.mode, env.brokerApiUrl, env.brokerToken, env.brokerGrpcHost, env.brokerGroup].join("|");
-  let s = globalThis.__mtrPredictServices;
-  if (!s || s.key !== key) {
-    const broker: BrokerClient =
-      env.mode === "live"
-        ? new HttpBrokerClient(env.brokerApiUrl, env.brokerToken)
-        : new MockBrokerClient();
-    const quotes = new QuoteService(broker, env.brokerGrpcHost, env.brokerToken);
-    const markets = new MarketService(broker, quotes, env.brokerGroup);
-    s = { key, broker, quotes, markets };
-    globalThis.__mtrPredictServices = s;
-  }
-  return s;
+  const existing = globalThis.__mtrPredictServices;
+  if (existing && existing.key === key) return existing;
+
+  const broker: BrokerClient =
+    env.mode === "live"
+      ? new HttpBrokerClient(env.brokerApiUrl, env.brokerToken)
+      : new MockBrokerClient();
+  const quotes = new QuoteService(broker, env.brokerGrpcHost, env.brokerToken);
+  const markets = new MarketService(broker, quotes, env.brokerGroup);
+  const next = { key, broker, quotes, markets };
+  globalThis.__mtrPredictServices = next;
+  // Tear down the superseded feed/stream/timers so an env or HMR change doesn't
+  // leak an orphaned gRPC stream pushing into a dead cache.
+  if (existing) existing.quotes.dispose();
+  return next;
 }
 
 export function getBroker(): BrokerClient {

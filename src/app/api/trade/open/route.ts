@@ -30,9 +30,26 @@ export async function POST(req: NextRequest) {
     const broker = getBroker();
     const markets = getMarketService();
 
+    // This site trades prediction markets only. Require the symbol to resolve to
+    // a known YES/NO outcome instrument — this blocks opening arbitrary broker
+    // symbols (e.g. a leveraged FOREX position whose real margin the PRED-model
+    // cost/payout UI would badly misrepresent), independent of trading group.
+    const refs = await markets.resolveSymbols([symbol]);
+    const ref = refs.get(symbol);
+    if (!ref) {
+      throw new HttpError(400, "Unknown market instrument — only prediction outcomes are tradable here.");
+    }
+    if (ref.betStatus === "RESOLVED") {
+      throw new HttpError(400, "This market has resolved and is closed for trading.");
+    }
+
     // Snap the volume to the instrument's contract rules before sending.
     const infos = await markets.getSymbolInfos([symbol]);
     const info = infos.get(symbol);
+    // Defensive: never trade a non-PRED instrument even if it were indexed.
+    if (info?.type && info.type !== "PRED") {
+      throw new HttpError(400, "Only prediction-market instruments can be traded here.");
+    }
     const volume = clampVolume(requested, info);
     if (volume <= 0) {
       throw new HttpError(400, `Amount is below this market's minimum (${info?.volumeMin ?? 1}).`);

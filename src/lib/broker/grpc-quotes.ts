@@ -19,8 +19,11 @@ const FAILURE_DISABLE_THRESHOLD = 6;
 const DISABLE_WINDOW_MS = 5 * 60_000;
 const HEARTBEAT_TIMEOUT_MS = 90_000; // 3 missed heartbeats → assume dead
 
+const MAX_WANTED = 500; // cap the subscribed-symbol set (LRU by last request)
+
 export class GrpcQuoteFeed {
-  private wanted = new Set<string>();
+  /** symbol → last-requested epoch ms; bounded + LRU-evicted. */
+  private wanted = new Map<string, number>();
   private stream: { cancel(): void } | null = null;
   private streamSymbols = 0;
   private restartTimer: NodeJS.Timeout | null = null;
@@ -47,15 +50,35 @@ export class GrpcQuoteFeed {
 
   /** Register interest in symbols; (re)starts the stream when the set grows. */
   ensureSymbols(symbols: string[]): void {
+    const now = Date.now();
     let grew = false;
     for (const s of symbols) {
-      if (s && !this.wanted.has(s)) {
-        this.wanted.add(s);
-        grew = true;
+      if (!s) continue;
+      if (!this.wanted.has(s)) grew = true;
+      this.wanted.set(s, now); // refresh recency
+    }
+    // Evict least-recently-requested symbols beyond the cap so a long-running
+    // server that browses many markets doesn't grow the set (and the stream
+    // payload) without bound.
+    if (this.wanted.size > MAX_WANTED) {
+      const byRecency = [...this.wanted.entries()].sort((a, b) => a[1] - b[1]);
+      for (let i = 0; i < this.wanted.size - MAX_WANTED; i++) {
+        this.wanted.delete(byRecency[i][0]);
       }
     }
     if (this.wanted.size === 0) return;
     if (grew || (!this.stream && !this.starting)) this.scheduleRestart();
+  }
+
+  /** Permanently stop this feed (called when the services singleton is replaced). */
+  dispose(): void {
+    this.disabledUntil = Number.MAX_SAFE_INTEGER; // `available` stays false → no restart
+    if (this.restartTimer) {
+      clearTimeout(this.restartTimer);
+      this.restartTimer = null;
+    }
+    this.stopStream();
+    this.wanted.clear();
   }
 
   private scheduleRestart(delay = RESTART_DEBOUNCE_MS): void {
@@ -79,7 +102,7 @@ export class GrpcQuoteFeed {
       const metadata = new grpc.Metadata();
       metadata.set("authorization", `Bearer ${this.token}`);
 
-      const symbols = [...this.wanted];
+      const symbols = [...this.wanted.keys()];
       const call = client.getQuotationsWithMarkupStream(
         { symbols, throttlingMs: 1000, smartThrottling: true },
         metadata,
@@ -96,8 +119,11 @@ export class GrpcQuoteFeed {
         this.backoffMs = 1_000;
         this.onQuote({
           symbol: q.symbol,
-          bid: Number(q.bidPrice),
-          ask: Number(q.askPrice),
+          // proto-loader is configured with defaults:false, so a legitimate
+          // 0.00 price (a near-certain outcome's losing side) is omitted from
+          // the message — coerce the absent field to 0, not NaN.
+          bid: Number(q.bidPrice ?? 0),
+          ask: Number(q.askPrice ?? 0),
           ts: Number(q.timestampInMillis) || Date.now(),
           dailyChange:
             q.dailyStatistics?.change !== undefined ? Number(q.dailyStatistics.change) : undefined,

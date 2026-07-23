@@ -3,9 +3,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import { usePolledJson } from "@/components/fetcher";
-import { PriceChart } from "@/components/price-chart";
+import { PriceChart, type ChartSeries } from "@/components/price-chart";
 import { TradeTicket, type TicketSide } from "@/components/trade-ticket";
 import { Badge, CategoryTile, ErrorNote, PageLoader } from "@/components/ui";
+import { assignSeriesColors, MAX_CHART_SERIES, SINGLE_SERIES_COLOR } from "@/lib/chart-colors";
 import type { MarketDetailView, OutcomeView } from "@/lib/markets";
 import { formatCents, formatPercent } from "@/lib/money";
 
@@ -26,19 +27,24 @@ function OutcomeRow({
   outcome,
   selected,
   resolved,
+  color,
   onPick,
 }: {
   outcome: OutcomeView;
   selected: boolean;
   resolved: boolean;
+  color?: string;
   onPick: (side: TicketSide) => void;
 }) {
   return (
     <li
-      className={`flex items-center gap-3 rounded-lg border px-3 py-2.5 transition ${
+      className={`flex items-center gap-3 rounded-xl border px-3 py-2.5 transition ${
         selected ? "border-brand bg-brand/[0.04]" : "border-line bg-white"
       }`}
     >
+      {color && (
+        <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: color }} aria-hidden />
+      )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-sm font-semibold">{outcome.title}</div>
         <div className="text-xs text-slate-400">{outcome.externalId}</div>
@@ -103,6 +109,25 @@ export function MarketView({ uuid }: { uuid: string }) {
   const resolvedAt = fmtDate(market.resolvedDate);
   const winner = resolved ? outcomes.find((o) => o.result === true) : null;
 
+  // Overlay chart: top outcomes by chance + the selected one; colors follow
+  // the outcome (keyed by externalId), not its current rank.
+  const colorByKey = assignSeriesColors(outcomes.map((o) => o.externalId));
+  let chartOutcomes: OutcomeView[];
+  if (binary) {
+    chartOutcomes = [selected];
+  } else {
+    chartOutcomes = outcomes.slice(0, Math.min(5, MAX_CHART_SERIES));
+    if (!chartOutcomes.some((o) => o.externalId === selected.externalId)) {
+      chartOutcomes = [...chartOutcomes.slice(0, MAX_CHART_SERIES - 1), selected];
+    }
+  }
+  const series: ChartSeries[] = chartOutcomes.map((o) => ({
+    symbol: o.instrumentYesName,
+    label: o.title,
+    color: binary ? SINGLE_SERIES_COLOR : (colorByKey.get(o.externalId) ?? SINGLE_SERIES_COLOR),
+    live: o.yesMid,
+  }));
+
   return (
     <div className="lg:grid lg:grid-cols-[minmax(0,1fr)_340px] lg:gap-6">
       <div className="space-y-4">
@@ -141,9 +166,17 @@ export function MarketView({ uuid }: { uuid: string }) {
         )}
 
         <PriceChart
-          symbol={selected.instrumentYesName}
-          livePrice={selected.yesMid}
-          title={binary ? "Chance of YES" : `${selected.title} — chance of YES`}
+          series={series}
+          title={binary ? "Chance of YES" : "Chance by outcome"}
+          selectedSymbol={binary ? undefined : selected.instrumentYesName}
+          onSelect={
+            binary
+              ? undefined
+              : (symbol) => {
+                  const o = outcomes.find((x) => x.instrumentYesName === symbol);
+                  if (o) setPicked(o.externalId);
+                }
+          }
         />
 
         {!binary && (
@@ -158,6 +191,11 @@ export function MarketView({ uuid }: { uuid: string }) {
                   outcome={o}
                   selected={o.externalId === selected.externalId}
                   resolved={resolved}
+                  color={
+                    chartOutcomes.some((c) => c.externalId === o.externalId)
+                      ? colorByKey.get(o.externalId)
+                      : undefined
+                  }
                   onPick={(s) => {
                     setPicked(o.externalId);
                     setSide(s);

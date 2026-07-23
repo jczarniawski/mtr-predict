@@ -365,12 +365,17 @@ function buildStore(): MockStore {
         yesSymbol,
       });
       const now = Date.now();
+      // Seed a deterministic non-zero "since day open" offset so daily-change
+      // chips and the movers list have data right from boot.
+      const dayOffset = resolved
+        ? 0
+        : 0.04 * noiseAt(`${yesSymbol}|dayopen`, Math.floor(now / 86_400_000));
       store.state.set(yesSymbol, {
         yesSymbol,
         mid: seed.mid,
         lastTick: Math.floor(now / TICK_MS),
         dayKey: dayKeyOf(now),
-        dayOpenMid: seed.mid,
+        dayOpenMid: clampMid(seed.mid - dayOffset),
         samples: [{ ts: now, mid: seed.mid }],
         initialMid: seed.mid,
         frozen: resolved,

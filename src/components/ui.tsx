@@ -1,5 +1,26 @@
 import type { ReactNode } from "react";
 
+/** "▲ 3¢ today" — daily move of a YES price, colored by direction. */
+export function ChangeChip({
+  change,
+  className = "",
+}: {
+  change: number | null | undefined;
+  className?: string;
+}) {
+  if (change == null || Math.abs(change) < 0.005) return null;
+  const up = change > 0;
+  return (
+    <span
+      className={`inline-flex items-center gap-0.5 text-xs font-semibold ${
+        up ? "text-yes-strong" : "text-no-strong"
+      } ${className}`}
+    >
+      {up ? "▲" : "▼"} {Math.abs(Math.round(change * 100))}¢ today
+    </span>
+  );
+}
+
 export function Spinner({ className = "" }: { className?: string }) {
   return (
     <span

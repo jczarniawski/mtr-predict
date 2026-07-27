@@ -117,6 +117,24 @@ describe("accounts", () => {
     const after = await broker.getTradingAccount(account.login);
     expect(after.financeInfo?.balance).toBe(500);
   });
+
+  it("lists a user's trading accounts by uuid (email → login resolution)", async () => {
+    const user = await broker.createUserAccount("email-login@example.com", "Abcd1234");
+    const created = await broker.createTradingAccount(user.uuid, {
+      group: "predUSD",
+      leverageRatioPercent: 100,
+      accountType: "DEMO",
+      initialDeposit: 500,
+      accountDetails: { firstName: "Mail", lastName: "User" },
+    });
+
+    const accounts = await broker.getUserTradingAccounts(user.uuid);
+    expect(accounts).toHaveLength(1);
+    expect(accounts[0].login).toBe(created.login);
+    expect(accounts[0].financeInfo?.balance).toBe(500);
+
+    await expect(broker.getUserTradingAccounts("no-such-uuid")).resolves.toEqual([]);
+  });
 });
 
 describe("trading", () => {

@@ -214,6 +214,13 @@ export class HttpBrokerClient implements BrokerClient {
     );
   }
 
+  getUserTradingAccounts(userUuid: string): Promise<TradingAccount[]> {
+    return this.request<TradingAccount[]>(
+      "GET",
+      `/v1/user-accounts/${encodeURIComponent(userUuid)}/trading-accounts`,
+    );
+  }
+
   /** ⚠️ Non-idempotent — never blind-retry (see balance-operations reference). */
   deposit(login: string, amount: number): Promise<void> {
     return this.request<void>(

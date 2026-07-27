@@ -4,6 +4,7 @@ import { getEnv } from "@/lib/env";
 import { HttpError, parseBody, toErrorResponse } from "@/lib/api-helpers";
 import { createSessionToken, SESSION_COOKIE, sessionCookieOptions } from "@/lib/session";
 import { toAccountView } from "@/lib/portfolio";
+import { provisionDemoAccount } from "@/lib/onboarding";
 import { isBrokerApiError } from "@/lib/broker/errors";
 
 interface SignupBody {
@@ -16,8 +17,10 @@ interface SignupBody {
 const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 /**
- * Creates a Broker API user account + a DEMO trading account funded with the
- * configured initial deposit, then attaches this browser to the new login.
+ * Creates a Broker API user account + a DEMO trading account, then attaches
+ * this browser to the new login. Self-healing: if a previous attempt created
+ * the user but the trading account failed, retrying the same email completes
+ * the provisioning instead of dead-ending on "already exists".
  */
 export async function POST(req: NextRequest) {
   try {
@@ -36,41 +39,36 @@ export async function POST(req: NextRequest) {
     }
     if (!firstName || !lastName) throw new HttpError(400, "Enter your first and last name.");
 
-    const broker = getBroker();
-    const env = getEnv();
+    let result;
+    try {
+      result = await provisionDemoAccount(getBroker(), getEnv(), {
+        email,
+        password,
+        firstName,
+        lastName,
+      });
+    } catch (e) {
+      // Duplicate created in a race between our pre-check and the create call.
+      if (isBrokerApiError(e) && e.isConflict) {
+        throw new HttpError(
+          409,
+          "This email is already registered. Switch to “Use existing login” and sign in with this email.",
+        );
+      }
+      throw e;
+    }
 
-    // The API rejects duplicates with 409, but older builds silently minted a
-    // new UUID — treat email as unique on our side and check first.
-    const existing = await broker.getUserByEmail(email);
-    if (existing) {
+    if (result.kind === "exists") {
       throw new HttpError(
         409,
         "This email is already registered. Switch to “Use existing login” and sign in with this email.",
       );
     }
 
-    let user;
-    try {
-      user = await broker.createUserAccount(email, password);
-    } catch (e) {
-      if (isBrokerApiError(e) && e.isConflict) {
-        throw new HttpError(409, "This email is already registered with the broker.");
-      }
-      throw e;
-    }
-
-    const account = await broker.createTradingAccount(user.uuid, {
-      group: env.brokerGroup,
-      leverageRatioPercent: 100,
-      accountType: "DEMO",
-      accessRight: "FULL",
-      initialDeposit: env.demoInitialDeposit,
-      accountDetails: { firstName, lastName },
-    });
-
+    const { account, userUuid } = result;
     const token = createSessionToken({
       login: account.login,
-      uuid: user.uuid,
+      uuid: userUuid,
       email,
       name: `${firstName} ${lastName}`,
     });

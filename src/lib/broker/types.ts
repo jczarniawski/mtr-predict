@@ -235,6 +235,7 @@ export interface BrokerClient {
     req: CreateTradingAccountRequest,
   ): Promise<TradingAccount>;
   getTradingAccount(login: string): Promise<TradingAccount>;
+  getUserTradingAccounts(userUuid: string): Promise<TradingAccount[]>;
   deposit(login: string, amount: number): Promise<void>;
 
   // Trading

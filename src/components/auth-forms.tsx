@@ -57,7 +57,7 @@ export function AuthForms() {
     run(() =>
       fetchJson("/api/auth/login", {
         method: "POST",
-        body: JSON.stringify({ login }),
+        body: JSON.stringify({ identifier: login }),
       }),
     );
 
@@ -154,11 +154,11 @@ export function AuthForms() {
           >
             <input
               required
-              inputMode="numeric"
-              placeholder="Trading account login (e.g. 820000)"
+              placeholder="Email or account login (e.g. 820000)"
               value={login}
-              onChange={(e) => setLogin(e.target.value.replace(/\D/g, ""))}
+              onChange={(e) => setLogin(e.target.value)}
               className={inputCls}
+              data-testid="login-identifier"
             />
             <button
               type="submit"
@@ -174,7 +174,8 @@ export function AuthForms() {
               )}
             </button>
             <p className="text-center text-xs leading-relaxed text-slate-400">
-              Attaches this browser to an existing trading account by its numeric login.
+              Use the email you signed up with, or a trading-account login number. With an
+              email, you&apos;re attached to your most recent trading account.
               {me?.mode === "mock" && (
                 <>
                   {" "}

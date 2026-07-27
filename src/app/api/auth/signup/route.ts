@@ -45,7 +45,7 @@ export async function POST(req: NextRequest) {
     if (existing) {
       throw new HttpError(
         409,
-        "This email is already registered with the broker. Attach your existing trading account login instead.",
+        "This email is already registered. Switch to “Use existing login” and sign in with this email.",
       );
     }
 

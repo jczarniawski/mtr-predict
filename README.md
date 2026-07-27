@@ -23,7 +23,9 @@ Broker API is the source of truth; the browser session is a signed cookie.
 - **Portfolio** — equity/balance/open P&L/free margin, open positions with
   live prices, and history including platform-settled positions.
 - **Onboarding** — create a demo account (user account + DEMO trading account
-  with an initial deposit) or attach an existing trading-account login.
+  with an initial deposit), then sign back in with the same email (resolved via
+  `GET /v1/user-accounts/email/{email}` → the user's trading accounts) or with
+  a numeric trading-account login.
 - **Live prices** — a single server-side gRPC quotations stream
   (`getQuotationsWithMarkupStream`) feeds a shared quote cache; REST candles
   are the automatic fallback. Cards/tickets poll the app's own `/api/quotes`.
@@ -114,7 +116,7 @@ proto/broker_api_v2.proto  Vendored gRPC contract (from the Broker-API skill)
 ## ⚠️ Demo scope
 
 The Broker API is an **administrative** API: one broker-level token, no
-end-user password verification. "Attach existing login" therefore trusts the
+end-user password verification. Signing in therefore trusts the email or
 login you type, and sign-up performs admin-side account creation. That's fine
 for an integration demo on the shared sandbox (`brokerID=0`) — put a real
 identity layer (and your own accounts directory) in front before exposing this

@@ -794,6 +794,13 @@ export class MockBrokerClient implements BrokerClient {
     return { ...acct.account, financeInfo: financeInfoOf(this.store, acct, Date.now()) };
   }
 
+  async getUserTradingAccounts(userUuid: string): Promise<TradingAccount[]> {
+    const now = Date.now();
+    return [...this.store.accounts.values()]
+      .filter((a) => a.user.uuid === userUuid)
+      .map((a) => ({ ...a.account, financeInfo: financeInfoOf(this.store, a, now) }));
+  }
+
   async deposit(login: string, amount: number): Promise<void> {
     const acct = this.store.accounts.get(login);
     if (!acct) throw notFound(`Trading account ${login} not found.`, `/v1/trading-accounts/${login}/deposit`);
